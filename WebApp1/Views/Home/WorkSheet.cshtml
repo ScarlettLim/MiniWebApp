@@ -1,0 +1,223 @@
+﻿@model List<WorkSheet>
+
+<h2>Work Sheet</h2>
+
+<div class="card mt-4">
+    <div class="card-body">
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label class="form-label">Date:</label>
+                <input type="date" id="worksheetDate" class="form-control" value="@DateTime.Today.ToString("yyyy-MM-dd")">
+            </div>
+        </div>
+
+        <div id="duplicateAlert" class="alert alert-danger d-none">
+            A duplicate project-task combination exists for this date!
+        </div>
+
+        <table class="table" id="worksheetTable">
+            <thead>
+                <tr>
+                    <th>Time In</th>
+                    <th>Time Out</th>
+                    <th>Hours</th>
+                    <th>Project</th>
+                    <th>Task</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in Model)
+                {
+                    <tr data-id="@entry.Id">
+                        <td><input type="time" value="@entry.TimeIn.ToString(@"hh\:mm")" class="form-control time-in"></td>
+                        <td><input type="time" value="@entry.TimeOut.ToString(@"hh\:mm")" class="form-control time-out"></td>
+                        <td class="hours">@entry.WorkHours.ToString("0.00")</td>
+                        <td>
+                            <select class="form-select project">
+                                <option value="">Select Project</option>
+                                @foreach (var project in ViewBag.Projects)
+                                {
+                                    <option value="@project.Id" selected="@(project.Id == entry.ProjectId)">@project.Name</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <select class="form-select task">
+                                <option value="">Select Task</option>
+                                @foreach (var task in ((List<ProjectTask>)ViewBag.Tasks).Where(t => t.ProjectId == entry.ProjectId))
+                                {
+                                    <option value="@task.Id" selected="@(task.Id == entry.ProjectTaskId)">@task.Name</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-danger delete-entry">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="mt-3">
+            <button id="addRow" class="btn btn-primary">Add Row</button>
+            <button id="saveAll" class="btn btn-success">Save All</button>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(function () {
+            // Calculate hours when time changes
+            $('#worksheetTable').on('change', '.time-in, .time-out', function () {
+                const row = $(this).closest('tr');
+                const timeIn = row.find('.time-in').val();
+                const timeOut = row.find('.time-out').val();
+
+                if (timeIn && timeOut) {
+                    const hours = (new Date(`2000-01-01T${timeOut}:00`) -
+                        new Date(`2000-01-01T${timeIn}:00`)) / 3600000;
+                    row.find('.hours').text(hours.toFixed(2));
+                }
+            });
+
+            // Load tasks when project changes
+            $('#worksheetTable').on('change', '.project', function () {
+                const projectId = $(this).val();
+                const row = $(this).closest('tr');
+                const taskSelect = row.find('.task');
+
+                taskSelect.empty().append('<option value="">Select Task</option>');
+                taskSelect.prop('disabled', !projectId);
+
+                if (projectId) {
+                    $.get('/Home/GetTasks', { projectId }, function (tasks) {
+                        tasks.forEach(task => {
+                            taskSelect.append($('<option>').val(task.id).text(task.name));
+                        });
+                        checkForDuplicates(row);
+                    });
+                }
+            });
+
+            // Check for duplicate project-task combinations
+            function checkForDuplicates(currentRow) {
+                const date = $('#worksheetDate').val();
+                const projectId = currentRow.find('.project').val();
+                const taskId = currentRow.find('.task').val();
+
+                if (!date || !projectId || !taskId) {
+                    $('#duplicateAlert').addClass('d-none');
+                    return;
+                }
+
+                const isDuplicate = Array.from($('#worksheetTable tbody tr'))
+                    .filter(row => row !== currentRow[0])
+                    .some(row => {
+                        const rowProjectId = $(row).find('.project').val();
+                        const rowTaskId = $(row).find('.task').val();
+                        return rowProjectId == projectId && rowTaskId == taskId;
+                    });
+
+                if (isDuplicate) {
+                    $('#duplicateAlert').removeClass('d-none');
+                    $('#saveAll').prop('disabled', true);
+                } else {
+                    $('#duplicateAlert').addClass('d-none');
+                    $('#saveAll').prop('disabled', false);
+                }
+            }
+
+            // Add new row
+            $('#addRow').click(function () {
+                $('#worksheetTable tbody').append(`
+                            <tr>
+                                <td><input type="time" class="form-control time-in"></td>
+                                <td><input type="time" class="form-control time-out"></td>
+                                <td class="hours">0.00</td>
+                                <td>
+                                    <select class="form-select project">
+                                        <option value="">Select Project</option>
+        @foreach (var project in ViewBag.Projects)
+        {
+                                                <option value="@project.Id">@project.Name</option>
+        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="form-select task" disabled>
+                                        <option value="">Select Task</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger delete-entry">Delete</button>
+                                </td>
+                            </tr>
+                        `);
+            });
+
+            // Save all entries
+            $('#saveAll').click(function () {
+                const date = $('#worksheetDate').val();
+                const entries = [];
+                const seenCombinations = new Set();
+
+                // Validate all rows
+                let isValid = true;
+                $('#worksheetTable tbody tr').each(function () {
+                    const projectId = $(this).find('.project').val();
+                    const taskId = $(this).find('.task').val();
+                    const combination = `${projectId}-${taskId}`;
+
+                    if (!projectId || !taskId) {
+                        isValid = false;
+                        return false; // break loop
+                    }
+
+                    if (seenCombinations.has(combination)) {
+                        isValid = false;
+                        return false; // break loop
+                    }
+                    seenCombinations.add(combination);
+
+                    entries.push({
+                        Date: date,
+                        TimeIn: $(this).find('.time-in').val(),
+                        TimeOut: $(this).find('.time-out').val(),
+                        ProjectId: parseInt(projectId),
+                        ProjectTaskId: parseInt(taskId)
+                    });
+                });
+
+                if (!isValid) {
+                    alert('Please ensure all rows have valid project-task combinations and no duplicates exist');
+                    return;
+                }
+
+                $.ajax({
+                    url: '/Home/SaveWorksheet',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(entries),
+                    success: function () {
+                        alert('Saved successfully!');
+                        location.reload();
+                    },
+                    error: function (xhr) {
+                        if (xhr.status === 400) {
+                            alert(xhr.responseText);
+                        } else {
+                            alert('Error saving data');
+                        }
+                    }
+                });
+            });
+
+            // Initial check for duplicates
+            $('#worksheetTable').on('change', '.project, .task', function () {
+                checkForDuplicates($(this).closest('tr'));
+            });
+        });
+    </script>
+}

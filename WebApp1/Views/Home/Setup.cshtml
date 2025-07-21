@@ -1,0 +1,148 @@
+﻿@model List<Project>
+
+<h2>Project and Task Setup</h2>
+
+<div class="row mt-4">
+    <div class="col-md-5">
+        <div class="card">
+            <div class="card-header">
+                <h4>Projects</h4>
+            </div>
+            <div class="card-body">
+                <div class="input-group mb-3">
+                    <input type="text" id="projectName" class="form-control" placeholder="Project name">
+                    <button class="btn btn-primary" id="addProject">Add</button>
+                </div>
+                <table class="table">
+                    <tbody id="projectsList">
+                        @foreach (var project in Model)
+                        {
+                            <tr data-id="@project.Id">
+                                <td>@project.Name</td>
+                                <td>
+                                    <button class="btn btn-sm btn-danger delete-project">Delete</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header">
+                <h4>Tasks</h4>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-5">
+                        <select id="projectSelect" class="form-select">
+                            <option value="">Select Project</option>
+                            @foreach (var project in Model)
+                            {
+                                <option value="@project.Id">@project.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <input type="text" id="taskName" class="form-control" placeholder="Task name">
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-primary w-100" id="addTask">Add</button>
+                    </div>
+                </div>
+                <table class="table mt-3">
+                    <tbody id="tasksList">
+                        @foreach (var project in Model)
+                        {
+                            foreach (var task in project.Tasks)
+                            {
+                                <tr data-id="@task.Id" data-project-id="@project.Id">
+                                    <td>@project.Name - @task.Name</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-danger delete-task">Delete</button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+@section Scripts {
+    <script>
+        $(function () {
+            $('#addProject').click(function () {
+                const name = $('#projectName').val().trim();
+                if (!name) {
+                    alert('Please enter a project name');
+                    return;
+                }
+
+                $.ajax({
+                    url: '/Home/AddProject',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ name: name }),
+                    success: function (project) {
+                        $('#projectsList').append(`
+                                    <tr data-id="${project.id}">
+                                        <td>${project.name}</td>
+                                        <td><button class="btn btn-sm btn-danger delete-project">Delete</button></td>
+                                    </tr>
+                                `);
+                        $('#projectSelect').append(`<option value="${project.id}">${project.name}</option>`);
+                        $('#projectName').val('');
+                    },
+                    error: function (xhr, status, error) {
+                        console.error(error);
+                        alert('Error adding project');
+                    }
+                });
+            });
+
+            $('#addTask').click(function () {
+                const projectId = $('#projectSelect').val();
+                const name = $('#taskName').val().trim();
+
+                if (!projectId) {
+                    alert('Please select a project');
+                    return;
+                }
+                if (!name) {
+                    alert('Please enter a task name');
+                    return;
+                }
+
+                $.ajax({
+                    url: '/Home/AddTask',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        projectId: projectId,
+                        name: name
+                    }),
+                    success: function (task) {
+                        $('#tasksList').append(`
+                                    <tr data-id="${task.id}" data-project-id="${projectId}">
+                                        <td>${task.projectName} - ${task.name}</td>
+                                        <td><button class="btn btn-sm btn-danger delete-task">Delete</button></td>
+                                    </tr>
+                                `);
+                        $('#taskName').val('');
+                    },
+                    error: function (xhr, status, error) {
+                        console.error(error);
+                        alert('Error adding task');
+                    }
+                });
+            });
+        });
+    </script>
+}
